@@ -1,0 +1,60 @@
+\documentclass[a4paper,12pt]{article}
+
+% Include support for english hyphenation (if installed on your sistem)
+\usepackage[english]{babel}
+
+% Include support for correct printing of romanian characters
+\usepackage[T1]{fontenc}
+\usepackage{ucs}
+\usepackage[utf8x]{inputenc}
+
+\hyphenpenalty 10000
+\exhyphenpenalty 10000
+
+% Include support for graphics
+\usepackage{graphicx}
+
+% Include support for figures
+\usepackage{subfig}
+
+% Include support for color
+\usepackage{color}
+
+% Include support for code listing
+\usepackage{listings}
+
+% Include support for inline figures
+\usepackage{wrapfig}
+
+% Make margins shorter 
+%\usepackage{fullpage}
+\usepackage[top=2.54cm,bottom=2.54cm,left=2.54cm,right=2.54cm]{geometry}
+%\usepackage[top=3.81cm,bottom=3cm,inner=3.5cm,outer=2.54cm]{geometry}
+
+% Indent paragraphs
+%\setlength{\parindent}{8pt} 
+%\parindent 8pt
+
+% Indent firs paragraph in a section
+\usepackage{indentfirst}
+
+\usepackage{setspace}
+\onehalfspacing
+\begin{document}
+
+ % the title pages
+\include{chapter0/titlepage}
+
+ %the short description of the thesis
+ %\include{chapter0/abstract}
+ 
+ \tableofcontents 
+ %\listoffigures
+
+\lstset{numbers=left, stepnumber=1, language=Java, tabsize=2} 
+
+ %the first chapter
+ \include{chapter1/chapter1}
+ \include{chapter0/biblio}
+ 
+\end{document}
