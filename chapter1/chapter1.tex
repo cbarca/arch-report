@@ -1,63 +1,94 @@
-\section*{Introduction}
+% CHAPTER_BEGIN
+\section{Arch Framework: Research Report}
 
-% Milestone 1 - CHAPTER_BEGIN
-\section{Milestone 1 - Ajira v.1}
+\subsection{Introduction}
+
+The \textit{arch} project represents a custom made framework for writing mainly data applications. Is built as a framework-library on top of IPL (Ibis Portability Layer - communication layer) adopting a master-slave architecture. The master is basically another slave that hast the extra task to setup the communication and start splitting the job between all the nodes (slaves). Thus, we do not have to install and configure anything as an independent platform and then use a special API to run jobs/tasks on that platform (i.e such as using Hadoop). With other words, what we need to run an \textit{arch} application is the \textit{ibis-server} (it is embedded inside the \textit{arch} framework so we can run it from there and have our inter nodes communication layer) and, of course, a program that uses \textit{arch} to compute some data. Usually, the program does not have to be divided into a master and slave side. We can use \textit{arch} framework only to write the master section. The slaves' behavior is automatically dictated by the list of actions that we add in the master code, inside the job. For testing my experimental changes on \textit{arch} I have run \textit{querypie:BenchmarkSorting}, an application built with \textit{arch} framework that sorts large data-sets of RDF triples. To build and run this entire setup (\textit{arch} + \textit{querypie}) I have used the git repository for code deployment on DAS4 and a self written ant file \cite{build_file} to build \textit{querypie} into a .jar bundle package (a package that embeds inside all the necessary dependencies, including the \textit{arch.jar} package built with the default ant file). Next, to run the \textit{querypie} on DAS4 was a simple \textit{prun} command execution (see next section).
+
 % 
-\subsection{DAS4 deployment \& execution}
+\subsection{Deployment \& execution on DAS4}
+
+For \textit{arch} and \textit{querypie} main-code deployment on DAS4 you will first need access to their git repositories \cite{arch_repo}, \cite{qpie_repo}. After that, simply clone their repositories in your home DAS4 directory and be sure that you are located in the 'master' branch. For the entire list of steps that you have to follow in order to run/execute this setup on multiple nodes, read next.
+\newline
+\newline
+\textbf{Steps for running \textit{querypie} on multiple DAS4 cluster nodes:}
+\begin{enumerate}
+	\item Deploy \textit{arch} and \textit{querypie} projects in your home DAS4 directory. Each project already has all the dependencies packages and ant files necessary for automatic build. 
+	\item Build \textit{arch} project using its ant build file: 'ant build-jar' 
+	\item Copy the \textit{arch.jar} package in the \textit{/lib} directory of the \textit{querypie}
+	\item Build \textit{querypie} project using its ant build file \cite{build_file}: 'ant build-jar' (will create a .jar bundle package that we use to execute its main class - BenchmarkSorting - on DAS4; the .jar is placed by default in the \textit{/jar} directory -- for any change you wish to do look for the parameters inside the ant file)
+	\item Configure \textit{ibis-server} parameters (port, enable events, etc) from inside \textit{arch's} ant build file 
+	\item Start \textit{ibis-server} on the DAS4 head-node from the \textit{arch} project directory: 'ant ibis-server' (note the address and port that is using)
+	\item Run/execute \textit{querypie} on DAS4 using the script example \cite{run_on_das4} -- change the parameters for your own needs.
+\end{enumerate}
+
 % 
-\subsection{Workflow example: How it sorts data}
+\subsection{Workflow example: how \textit{arch} can be used to sort RDF triples}
+
+In this section I will explain how the \textit{arch} framework works on 'crunching' data, using as a workflow example the RDF triples' distributed sorting implemented in \textit{querypie}, BenchmarkSorting. To begin with, the process of sorting can be split in 3 steps: (1) read and sort the RDF triples; (2) send-receive communication; (3) merge and write the RDF triples in files;
+
+The main data structure used in all three steps is the 'Bucket' -- an in-memory buffer that is filled up with triples that have the hash key equal to the bucket's identifier. When the buffer size is exceeded, all the content gets sorted and cached on the hard-disk. By default, each node keeps 1 bucket in the memory for every other node (remote-buckets), including himself (local-bucket). So, there are by default N buckets on each node, where N = number of nodes; a new feature allows you to use more than 1 bucket per node (NPARTITIONS\_PER\_NODE parameter, which by default is 1). The creation and initialization of a bucket (create, get, release, etc) is controlled by the 'Buckets' wrapper class.
+
 % 
-\subsection{Execution time \& profiling}
+\subsubsection*{(1) Read and sort the RDF triples}
+
+First, the data set (compressed or not) gets split in N (equals to the number of nodes) file partitions of almost same sizes, each one assigned to a single node for further further reading. The data set split task is done by the ReadFromFiles action, which creates N FileCollections of a 'minimumFileSplitSize'. Next, the FileLayer of each node reads the triples from its assigned partition - FileCollection (a set of pathnames representing the partitioned files) and inserts them into the corresponding node's remote bucket (where hash key of the triple equals to the node's id). When a bucket gets full with triples, its content is sorted using the java MergeSort algorithm and cached on disk. All the information/metadata about caching that content on the disk is stored inside the Bucket object for further use. When there is no more data to read from the partitions the buckets are flagged with 'finish' and messages announcing that there are triples to 'pull' are sent to all the other nodes. At this point, starts the send-receive communication -- the transfer of remote-buckets to their assigned nodes (i.e. on node Y, the remote-bucket for node X has triples assigned to X => this remote-bucket will be transferred to X's local-bucket).
+
+<Diagram-1>
+
+% 
+\subsubsection*{(2) Send-receive communication}
+
+<Diagram-2>
+
+% 
+\subsubsection*{(3) Merge and write the RDF triples in files}
+
+<Diagram-3>
+
+% 
+\subsection{Execution-time \& profiling}
+
+<Table-1>
+<Chart-1>
+
 % 
 \subsubsection*{Discussion}
-% 
-\subsection{Proposals for run time optimization}
-% 
-\subsubsection*{Disabling sort property for remote-buckets}
-% 
-\subsubsection*{Interleave send-receive with local reading}
-
-\begin{itemize}
-	\item \bf{Allow receiving of unsorted data}
-
-	\item \bf{Split 'tuples' buffer into two buffers}
-
-	\item \bf{Loosen-up the synchronization between bucket's methods}
-\end{itemize}
 
 % 
-\subsubsection*{In-background chunks' removal for writing the results in files}
+\subsection{Proposals \& implementations: how to improve \textit{arch's} execution-time}
+
 % 
-\subsubsection{Results: execution time \& profiling}
+\subsubsection*{(1) Disabling sort property for remote-buckets}
+
+<Diagram-4>
+
+% 
+\subsubsection*{(2) Interleave send-receive with local reading}
+
+\textbf{(a) Allow receiving of unsorted data}
+
+\textbf{(b) Split 'tuples' buffer into two buffers}
+
+\textbf{(c) Loosen-up the synchronization between bucket's methods}
+
+<Diagram-5>
+
+% 
+\subsubsection*{(3) In-background chunks' removal for writing the results in files}
+
+<Diagram-6>
+
+% 
+\subsubsection{Results: execution-time \& profiling}
+
+<Table-2>
+<Chart-2>
+
 % 
 \subsubsection*{Discussion}
-% Milestone 1 - CHAPTER_END
 
+\subsection{Future work}
 
-% Milestone 2 - CHAPTER_BEGIN
-\section{Milestone 2 - Ajira v.2}
-% 
-\subsection{New features \& code re-factoring}
-% 
-\begin{itemize}
-	\item \bf{Multiple buckets per node partition}
-
-	\item \bf{...}
-
-	\item \bf{...}
-\end{itemize}
-% 
-\subsection{Execution time \& profiling}
-% 
-\subsubsection*{Discussion}
-% 
-\subsection{Merging proposals in the new version}
-% 
-\subsubsection{Results: execution time \& profiling}
-% 
-\subsubsection*{Discussion}
-% Milestone 2 - CHAPTER_END
-
-\section*{Feature work}
-
-\section*{Conclusion}
+\subsection{Conclusions}
+% CHAPTER_END
