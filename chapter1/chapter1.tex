@@ -25,7 +25,7 @@ For \textit{arch} and \textit{querypie} main-code deployment on DAS4 you will fi
 % 
 \subsection{Workflow example: how \textit{arch} can be used to sort RDF triples}
 
-In this section I will explain how the \textit{arch} framework works on 'crunching' data, using as a workflow example the RDF triples' distributed sorting implemented in \textit{querypie}, BenchmarkSorting. To begin with, the process of sorting can be split in 3 steps: (1) read and sort the RDF triples; (2) send-receive communication; (3) merge and write the RDF triples in files;
+In this section I will explain how the \textit{arch} framework works on 'crunching' data, using as a workflow example the RDF triples' \textit{distributed sorting} implemented in \textit{querypie}, BenchmarkSorting. To begin with, the process of sorting can be split in 3 steps: (1) read and sort the RDF triples; (2) send-receive communication; (3) merge and write the RDF triples in files;
 
 The main data structure used in all three steps is the 'Bucket' -- an in-memory buffer that is filled up with triples of which hash keys are equal to the bucket's identifier. When the buffer limit size is exceeded, all its content gets sorted and cached on the hard-disk (in files). Thus, when we refer to the 'Bucket' we usually mean both the in-memory buffer and the hard-disk stored files (if data hits the disk). Each time the files' number increases above a fixed limit, a thread is started to merge them 2-by-2 up until their number gets below. All the information about the files (metadata such as names, first elements, size, etc) is kept inside the Bucket -- we need them at the time we transfer the triples or when we write the resulted set back. By default, each node keeps 1 bucket in the memory for every other node (remote-buckets), including itself (local-bucket). So, there are by default N buckets on each node, where N = number of nodes; a new feature allows you to use more than 1 bucket per node (NPARTITIONS\_PER\_NODE parameter, which by default is 1). The creation and initialization of a bucket (create, get, release, etc) is controlled by the 'Buckets' wrapper class.
 
@@ -46,7 +46,7 @@ When a signal alert for a bucket ready for transfer is received by a node (\text
 % 
 \subsubsection*{(3) Merge and write the RDF triples in files}
 
-After all the triples got moved from the remote-buckets (previous step is finished), the final step is all about merging the local-bucket's in-memory buffer with its cached content (the files from the hard disk) -- in case data hits the disk. This task is done by the same method (RemoveChunk) that removes chunks for triples' transfer. Now it stands for fetching data from the local-bucket whenever the bucket-iterator is called for writing data. In the end, the result at each node is represented by one sorted file with RDF triples (only if we let the default number, equal with 1, of buckets per node).
+After all the triples got moved from the remote-buckets (previous step is finished), the final step is all about merging the local-bucket's in-memory buffer with its cached content (the files from the hard disk) -- in case data hits the disk. This task is done by the same method (RemoveChunk) that removes chunks for triples' transfer. Now it stands for fetching data from the local-bucket whenever the bucket-iterator is called for writing data. In the end, the result at each node is represented by one sorted file with RDF triples (only if we let the default number, equal with 1, of buckets per node). 
 
 <Diagram-3>
 
@@ -70,26 +70,41 @@ After all the triples got moved from the remote-buckets (previous step is finish
 % 
 \subsection{Proposals \& implementations: how to improve \textit{arch's} execution-time}
 
+In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would for reading-sorting-caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the pre-research I made on Hadoop:Map-Reduce \cite{hadoop}, a platform for processing data which has a stage called 'shuffle' \cite{shuffling} that ensures data is partitioned and sent to the reducers, I came up with the following ideas: 
+\begin{itemize}
+\item to \textit{disable the local sorting of remote-buckets},
+\item to \textit{start as soon as possible the triples' transfer/send-receive} (we do not need to keep data more than is necessary => until the end of a partition read) and
+\item to \textit{'hide' the triples' merging} under a independent background process. 
+\end{itemize}
+  
+These proposals intent to increase the chances of using less then 3 writes on disk (unless the network represents a bottleneck) and to improve the execution time of the Arch framework. From the distributed-sorting point of view, in my opinion, this approach of moving the sort phase on the recipient side and having less writes on disks is able to improve the total time of the execution. In the next paragraphs I will detail each of them, writing also about the implementation aspects.
+
 % 
 \subsubsection*{(1) Disabling sort property for remote-buckets}
+
+Now, that we decided to begin the data transfer as soon as possible, we do not need anymore to apply a sorting algorithm before that (sooner we send the chunks into network, lower the chances to hit the disk would be). The sorting will have to be placed on the recipient side, under the same assumptions -- when the buffer gets filled, it gets sorted and cached on the disk. To disable this property, we have to construct/initialize the remote buckets without a sorting function and sorting parameters.
+
+% 
+\subsubsection*{(2) Interleave the transfer with the local reading}
+
+For the transfer to start at the very beginning is obvious that it should overlap the file partitions' reading (triples' reading). So, in startTransfer() we also start broadcasting signal alerts to the other nodes to send back requests for bucket fetches -- alertTransfer(). To allow that few changes have to be done.
+
+\textbf{(a) Allow receiving of unsorted data}
+
+When a chunk is getting transferred (sendTuples) we specify the sorting function and its parameters in the message. Because we do not apply anymore a sorting algorithm on the remote buckets we now declare a null sorting function and parameters (meaning that the chunk is not sorted). Thus, on the recipient side we have to allow appending of unsorted data into the local-bucket. The original version of addAll, the method that adds chunks into the local-bucket, expected sorted data -- compares the size of the chunk with the size of the buffer and depending on which is bigger that one is being cached on the disk (cacheBuffer method). If it happens that the chunk is bigger, is cached directly without being sorted (because it was already done that on the sender side), otherwise it sorts the buffer and spills it on the disk. This logic got changed a bit -- we now attempt to add the chunk to the buffer, or other way, if the buffer has fewer elements, instead of writing onto the disk. Only if we fail we sort and cache the one that has a bigger size.
+
+\textbf{(b) Split the main buffer into two buffers}
+
+
+
+\textbf{(c) Loosen-up the synchronization between bucket's methods}
 
 <Diagram-4>
 
 % 
-\subsubsection*{(2) Interleave send-receive with local reading}
-
-\textbf{(a) Allow receiving of unsorted data}
-
-\textbf{(b) Split 'tuples' buffer into two buffers}
-
-\textbf{(c) Loosen-up the synchronization between bucket's methods}
-
-<Diagram-5>
-
-% 
 \subsubsection*{(3) In-background chunks' removal for writing the results in files}
 
-<Diagram-6>
+<Diagram-5>
 
 % 
 \subsubsection{Results: execution-time \& profiling}
