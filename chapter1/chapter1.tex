@@ -87,22 +87,26 @@ Now, that we decided to begin the data transfer as soon as possible, we do not n
 % 
 \subsubsection*{(2) Interleave the transfer with the local reading}
 
-For the transfer to start at the very beginning is obvious that it should overlap the file partitions' reading (triples' reading). So, in startTransfer() we also start broadcasting signal alerts to the other nodes to send back requests for bucket fetches -- alertTransfer(). To allow that few changes have to be done.
+For the transfer to start at the very beginning is obvious that it should overlap the file partitions' reading (triples' reading). So, in startTransfer() we also start broadcasting signal alerts to the other nodes to send back requests for bucket fetches -- alertTransfer(). To allow that few changes have to be done:
 
 \textbf{(a) Allow receiving of unsorted data}
 
-When a chunk is getting transferred (sendTuples) we specify the sorting function and its parameters in the message. Because we do not apply anymore a sorting algorithm on the remote buckets we now declare a null sorting function and parameters (meaning that the chunk is not sorted). Thus, on the recipient side we have to allow appending of unsorted data into the local-bucket. The original version of addAll, the method that adds chunks into the local-bucket, expected sorted data -- compares the size of the chunk with the size of the buffer and depending on which is bigger that one is being cached on the disk (cacheBuffer method). If it happens that the chunk is bigger, is cached directly without being sorted (because it was already done that on the sender side), otherwise it sorts the buffer and spills it on the disk. This logic got changed a bit -- we now attempt to add the chunk to the buffer, or other way, if the buffer has fewer elements, instead of writing onto the disk. Only if we fail we sort and cache the one that has a bigger size.
+When a chunk is getting transferred (\textit{sendTuples() method}) we specify the sorting function and its parameters in the message. Because we do not apply anymore a sorting algorithm on the remote-buckets we now declare a null sorting function and parameters (meaning that the chunk is not sorted). Thus, on the recipient side we have to allow appending of unsorted data into the local-bucket. The original version of \textit{addAll()} method, which adds chunks into the local-bucket, used to expect sorted data -- it compares the size of the chunk with the size of the buffer and depending on which is bigger that one is being cached on the disk (\textit{cacheBuffer() method}). If it happens that the chunk is bigger, is cached directly without being sorted (because it was already done that on the sender side), otherwise it sorts the buffer and spills it on the disk. For the research part, this logic got changed a bit -- we now first try to add the chunk into the buffer, or the other way if the buffer has fewer elements, instead of writing directly onto the disk. Only if the addition fails, we sort and cache in a temporary file the one's content that has a bigger size.
 
 \textbf{(b) Split the main buffer into two buffers}
 
-
+Furthermore, we can improve the previous part by splitting the main buffer into two separate buffers in such way that one should be use for reading (\textit{inBuffer}) and one for receiving chunks (\textit{exBuffer}). In this way, we can operate independently on each buffer. One disadvantage is that we require extra memory for the second buffer. At the end of the transfer -- when the bucket is flagged with finished -- we add one buffer into another (\textit{combineInExBuffers()} method) in order to have a single buffer combined with both contents. If both have big sizes, one of them (the smaller one) gets cached on the disk.
 
 \textbf{(c) Loosen-up the synchronization between bucket's methods}
+
+Now, that we split the buffer into two independent buffers we can further loosen-up the synchronization primitives between the read and transfer (\textit{add() and addAll() methods}), the only coarse synchronization point being the moment when both methods call \textit{cacheBuffer()} (both buffers might get full maybe at the same time).
 
 <Diagram-4>
 
 % 
 \subsubsection*{(3) In-background chunks' removal for writing the results in files}
+
+The last idea refers to the writing of the sorted local-bucket (all the triples) into the result file -- the result set. The way of doing that is to use the \textit{removeChunk()} method into the \textit{bucketIterator} class to fetch chunks from the local-bucket when there are no more triples to iterate on. An idea would be to hide the dead-time that the iterator has to wait for merging-up triples from the main memory (buffer) with the ones stored on the disk and to try instead to remove/get a chunk that has been already processed and stored in a set of auxiliary buffers in memory (triples ready to be written as results). For that, we start a separate thread at the right moment we set the bucket's flag on finished, which fills up auxiliary buffers with chunks from the main buffer. When a write is being performed (iterator is called), the chunk is taken directly from the auxiliary buffers instead of waiting for the whole merge. Moreover, when a buffer from the set gets emptied the thread will go on and try to refill it, if there are anymore elements for that -- this mechanism of storing buffers processed earlier is generally called 'Double-Buffering'.
 
 <Diagram-5>
 
