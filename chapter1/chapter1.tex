@@ -32,23 +32,37 @@ The main data structure used in all three steps is the 'Bucket' -- an in-memory 
 % 
 \subsubsection*{(1) Read and sort the RDF triples}
 
-First, the data set (compressed or not) gets split in file partitions of almost the same sizes, each one being assigned to one node for further reading. The split of the data set is done by the ReadFromFiles action, which creates FileCollections of a 'minimumFileSplitSize'. Next, the FileLayer of each node reads the triples from its assigned partitions -- the FileCollections (a set of pathnames representing the partitioned files) -- and inserts them into the corresponding node's remote-bucket (where hash key of the triple equals to the node's remote-bucket id). If a bucket gets full with triples, its content is sorted using the java MergeSort algorithm and cached on disk. All the information/metadata about caching that content on the disk is stored inside the Bucket object for further use. When there is no more data left to read from a partition, the node broadcasts a signal, alerting that the remote-buckets are ready to get transferred (this means that the start of the send-receive step is dependent on the size of the file partition). So, at this point, the send-receive step starts -- triples are transferred from the remote-buckets to their assigned nodes (i.e. on node Y, its remote-bucket for node X has triples assigned to X \textit{=>} triples from Y's remote-bucket will be transferred to X's local-bucket).
+First, the data set (compressed or not) gets split in file partitions of almost the same sizes, each one being assigned to one node for further reading. The split of the data set is done by the ReadFromFiles action, which creates FileCollections of a 'minimumFileSplitSize'. Next, the FileLayer of each node reads the triples from its assigned partitions -- the FileCollections (a set of pathnames representing the partitioned files) -- and inserts them into the corresponding local/remote bucket (where the triple's hash key equals to the node's bucket id). If a bucket gets full with triples, its content is sorted using the java MergeSort algorithm and cached on disk. All the information/metadata about caching that content on the disk is stored inside the Bucket object for further use. When there is no more data left to read from a partition, the node broadcasts a signal, alerting that the remote-buckets are ready to get transferred (this means that the start of the send-receive step is dependent on the size of the file partition). So, at this point, the send-receive step starts -- triples are transferred from the remote-buckets to their assigned nodes (i.e. on node Y, its remote-bucket for node X has triples assigned to X \textit{=>} triples from Y's remote-bucket will be transferred to X's local-bucket).
 
-<Diagram-1>
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{diag1}
+\caption{Read and sort}
+\end{figure}
 
 % 
 \subsubsection*{(2) Send-receive communication}
 
-When a signal alert for a bucket ready for transfer is received by a node (\textit{receiver}), a corespondent request for fetching triples from it is sent back to the \textit{sender}. Then, the \textit{sender} registers that request and, whenever the remote-bucket has the available data (MIN\_SIZE\_TO\_SEND) for transfer, removes a chunk and sends it to the \textit{requester}. Next, the \textit{recipient} adds that chunk into its local-bucket and \textit{sends} a request for another fetch. As long as on the other side (\textit{sender's} side) the remote-bucket still contains triples, the \textit{receiver} will have chunks get transferred in its local-bucket. If there are no more RDF triples inside of it, the remote-bucket is released and the transfer's metatada are cleaned/removed. But, before that, a last signal that marks the end of the transfer is sent to the \textit{recipient}, which flags its local-bucket with \textit{finished} -- meaning that is ready for merge \& write. The chunk removal, in worst case when triples are getting cached on the disk, has to extract all the minimums from the in-memory buffer and the cached files up until it fills the chunk's buffer. Is necessary to do that because we expect to receive sorted data on the \textit{recipient} side.
+When a signal alert for a bucket ready for transfer is received by a node (\textit{receiver}), a corespondent request for fetching triples from it is sent back to the \textit{sender}. Then, the \textit{sender} registers that request and, whenever the remote-bucket has the available data (MIN\_SIZE\_TO\_SEND) for transfer, removes a chunk and sends it to the \textit{requester}. Next, the \textit{recipient} adds that chunk into its local-bucket and \textit{sends} a request for another fetch. As long as on the other side (\textit{sender's} side) the remote-bucket still contains triples, the \textit{receiver} will have chunks get transferred in its local-bucket. If there are no more RDF triples inside of it, the remote-bucket is released and the transfer's metatada are cleaned/removed. But, before that, a last signal that marks the end of the transfer is sent to the \textit{recipient}, which flags its local-bucket with \textit{finished} -- meaning that is ready for merge \& write. The chunk removal, for the worst case when triples are getting cached on the disk, has to extract all the minimum triples from the in-memory buffer and the cached files (in sorted order) up until it fills the chunk. Is necessary to do that because we expect to receive sorted data on the \textit{recipient} side.
 
-<Diagram-2>
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{diag2}
+\caption{Transfer to correspondent nodes}
+\end{figure}
 
 % 
 \subsubsection*{(3) Merge and write the RDF triples in files}
 
 After all the triples got moved from the remote-buckets (previous step is finished), the final step is all about merging the local-bucket's in-memory buffer with its cached content (the files from the hard disk) -- in case data hits the disk. This task is done by the same method (RemoveChunk) that removes chunks for triples' transfer. Now it stands for fetching data from the local-bucket whenever the bucket-iterator is called for writing data. In the end, the result at each node is represented by one sorted file with RDF triples (only if we let the default number, equal with 1, of buckets per node). 
 
-<Diagram-3>
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{diag3}
+\caption{Merge and write}
+\end{figure}
+
+\pagebreak
 
 % 
 \subsection{Execution-time \& profiling}
@@ -68,7 +82,7 @@ After all the triples got moved from the remote-buckets (previous step is finish
 \subsubsection*{Discussion}
 
 % 
-\subsection{Proposals \& implementations: how to improve \textit{arch's} execution-time}
+\subsection{Proposals \& implementations: how to improve \textit{arch's} \\ execution-time}
 
 In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would for reading-sorting-caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the pre-research I made on Hadoop:Map-Reduce \cite{hadoop}, a platform for processing data which has a stage called 'shuffle' \cite{shuffling} that ensures data is partitioned and sent to the reducers, I came up with the following ideas: 
 \begin{itemize}
