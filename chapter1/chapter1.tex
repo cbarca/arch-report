@@ -37,7 +37,7 @@ First, the data set (compressed or not) gets split in file partitions of almost 
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag1}
-\caption{Read and sort - remote & local buckets structure}
+\caption{Read and sort - remote \& local buckets structure}
 \end{figure}
 
 % 
@@ -107,14 +107,26 @@ Furthermore, we can improve the previous part by splitting the main buffer into 
 
 Now, that we split the buffer into two independent buffers we can further loosen-up the synchronization primitives between the read and transfer (\textit{add() and addAll() methods}), the only coarse synchronization point being the moment when both methods call \textit{cacheBuffer()} (both buffers might get full maybe at the same time).
 
-<Diagram-4>
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{diag4a}
+\linebreak
+\linebreak
+\centering
+\includegraphics[scale=0.6]{diag4b}
+\caption{New local/remote buckets}
+\end{figure}
 
 % 
 \subsubsection*{(3) In-background chunks' removal for writing the results in files}
 
 The last idea refers to the writing of the sorted local-bucket (all the triples) into the result file -- the result set. The way of doing that is to use the \textit{removeChunk()} method into the \textit{bucketIterator} class to fetch chunks from the local-bucket when there are no more triples to iterate on. An idea would be to hide the dead-time that the iterator has to wait for merging-up triples from the main memory (buffer) with the ones stored on the disk and to try instead to remove/get a chunk that has been already processed and stored in a set of auxiliary buffers in memory (triples ready to be written as results). For that, we start a separate thread at the right moment we set the bucket's flag on finished, which fills up auxiliary buffers with chunks from the main buffer. When a write is being performed (iterator is called), the chunk is taken directly from the auxiliary buffers instead of waiting for the whole merge. Moreover, when a buffer from the set gets emptied the thread will go on and try to refill it, if there are anymore elements for that -- this mechanism of storing buffers processed earlier is generally called 'Double-Buffering'.
 
-<Diagram-5>
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{diag5}
+\caption{In-background merge-up}
+\end{figure}
 
 % 
 \subsubsection{Results: execution-time \& profiling}
