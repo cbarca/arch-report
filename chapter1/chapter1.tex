@@ -8,7 +8,7 @@ The \textit{arch} project represents a custom made framework for writing mainly 
 % 
 \subsection{Deployment \& execution on DAS4}
 
-For \textit{arch} and \textit{querypie} main-code deployment on DAS4 you will first need access to their git repositories \cite{arch_repo}, \cite{qpie_repo}. After that, simply clone their repositories in your home DAS4 directory and be sure that you are located in the 'benchm_master' branch. For the entire list of steps that you have to follow in order to run/execute this setup on multiple nodes, read next.
+For \textit{arch} and \textit{querypie} main-code deployment on DAS4 you will first need access to their git repositories \cite{arch_repo}, \cite{qpie_repo}. After that, simply clone their repositories in your home DAS4 directory and be sure that you are located in the benchm\_master branch. For the entire list of steps that you have to follow in order to run/execute this setup on multiple nodes, read next.
 \newline
 \newline
 \textbf{Steps for running \textit{querypie} on multiple DAS4 cluster nodes:}
@@ -76,7 +76,7 @@ After all the triples got moved from the remote-buckets (previous step is finish
 % 
 \subsection{Proposals \& implementations: how to improve \textit{arch's} \\ execution-time}
 
-In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch benchm_master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would for reading-sorting-caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the pre-research I made on Hadoop:Map-Reduce \cite{hadoop}, a platform for processing data which has a stage called 'shuffle' \cite{shuffling} that ensures data is partitioned and sent to the reducers, I came up with the following ideas: 
+In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch benchm\_master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would for reading-sorting-caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the pre-research I made on Hadoop:Map-Reduce \cite{hadoop}, a platform for processing data which has a stage called 'shuffle' \cite{shuffling} that ensures data is partitioned and sent to the reducers, I came up with the following ideas: 
 \begin{itemize}
 \item to \textit{disable the local sorting of remote-buckets},
 \item to \textit{start as soon as possible the triples' transfer/send-receive} (we do not need to keep data more than is necessary => until the end of a partition read) and
