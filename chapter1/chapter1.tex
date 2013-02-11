@@ -32,34 +32,37 @@ The main data structure used in all three steps is the 'Bucket' -- an in-memory 
 % 
 \subsubsection*{(1) Read and sort the RDF triples}
 
-First, the data set (compressed or not) gets split in file partitions of almost the same sizes, each one being assigned to one node for further reading. The split of the data set is done by the ReadFromFiles action, which creates FileCollections of a 'minimumFileSplitSize'. Next, the FileLayer of each node reads the triples from its assigned partitions -- the FileCollections (a set of pathnames representing the partitioned files) -- and inserts them into the corresponding local/remote bucket (where the triple's hash key equals to the node's bucket id). If a bucket gets full with triples, its content is sorted using the java MergeSort algorithm and cached on disk. All the information/metadata about caching that content on the disk is stored inside the Bucket object for further use. When there is no more data left to read from a partition, the node broadcasts a signal alert that the remote-buckets are ready to get transferred (this means that the send-receive start is dependent on the size of the file partition). So, at this point, the send-receive step begins -- triples are transferred from the remote-buckets to their assigned nodes (i.e. on node Y, its remote-bucket for node X has triples assigned to X \textit{=>} triples from Y's remote-bucket will be transferred to X's local-bucket).
+First, the data set (compressed or not) gets split in file partitions of almost the same sizes, each one being assigned to one node for further reading. The split of the data set is done by the ReadFromFiles action, which creates FileCollections of a 'minimumFileSplitSize'. Next, the FileLayer of each node reads the triples from its assigned partitions -- the FileCollections (a set of pathnames representing the partitioned files) -- and inserts them into the corresponding local/remote bucket (where the triple's hash key equals to the node's bucket id). If a bucket gets full with triples, its content is sorted using the java MergeSort algorithm and cached on disk. All the information/metadata about caching that content on the disk is stored inside the Bucket object for further use. When there is no more data left to read from a partition, the node broadcasts a signal alert that the remote-buckets are ready to get transferred (this means that the send-receive start is dependent on the size of the file partition). See Figure~\ref{fig:diag1} for a better understanding. So, at this point, the send-receive step begins -- triples are transferred from the remote-buckets to their assigned nodes (i.e. on node Y, its remote-bucket for node X has triples assigned to X \textit{=>} triples from Y's remote-bucket will be transferred to X's local-bucket).
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag1}
 \caption{Read and sort - remote \& local buckets structure}
+\label{fig:diag1}
 \end{figure}
 
 % 
 \subsubsection*{(2) Send-receive communication}
 
-When a signal alert for a bucket ready for transfer is received by a node (\textit{receiver}), a corespondent request for fetching triples from it is sent back to the \textit{sender}. Then, the \textit{sender} registers that request and, whenever the remote-bucket has the available data (MIN\_SIZE\_TO\_SEND) for transfer, removes a chunk and sends it to the \textit{requester}. Next, the \textit{recipient} adds that chunk into its local-bucket and \textit{sends} a request for another fetch. As long as on the other side (\textit{sender's} side) the remote-bucket still contains triples, the \textit{receiver} will have chunks get transferred in its local-bucket. If there are no more RDF triples inside of it, the remote-bucket is released and the transfer's metatada are cleaned/removed. But, before that, a last signal that marks the end of the transfer is sent to the \textit{recipient}, which flags its local-bucket with \textit{finished} -- meaning that is ready for merge \& write. The chunk removal, in the worst case when triples are getting cached on the disk, has to extract all the minimum triples from the in-memory buffer and the cached files (in sorted order) up until it fills the chunk. Is necessary to do that because we expect to receive sorted data on the \textit{recipient} side. Otherwise, basically, it sends a chunk directly from the in-memory buffer, but after it applies the sort.
+When a signal alert for a bucket ready for transfer is received by a node (\textit{receiver}), a corespondent request for fetching triples from it is sent back to the \textit{sender}. Then, the \textit{sender} registers that request and, whenever the remote-bucket has the available data (MIN\_SIZE\_TO\_SEND) for transfer, removes a chunk and sends it to the \textit{requester}. Next, the \textit{recipient} adds that chunk into its local-bucket and \textit{sends} a request for another fetch. As long as on the other side (\textit{sender's} side) the remote-bucket still contains triples, the \textit{receiver} will have chunks get transferred in its local-bucket. If there are no more RDF triples inside of it, the remote-bucket is released and the transfer's metatada are cleaned/removed. But, before that, a last signal that marks the end of the transfer is sent to the \textit{recipient}, which flags its local-bucket with \textit{finished} -- meaning that is ready for merge \& write. In Figure~\ref{fig:diag2} we show very briefly the workflow of the send-receive communication. The chunk removal, in the worst case when triples are getting cached on the disk, has to extract all the minimum triples from the in-memory buffer and the cached files (in sorted order) up until it fills the chunk. Is necessary to do that because we expect to receive sorted data on the \textit{recipient} side. Otherwise, basically, it sends a chunk directly from the in-memory buffer, but after it applies the sort.
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag2}
 \caption{Transfer to correspondent nodes - send-receive communication}
+\label{fig:diag2}
 \end{figure}
 
 % 
 \subsubsection*{(3) Merge and write the RDF triples in files - results output}
 
-After all the triples got moved from the remote-buckets (previous step is finished), the final step is all about merging the local-bucket's in-memory buffer with its cached content (the files from the hard disk) -- in case data hits the disk. This task is done by the same method (RemoveChunk) that removes chunks for triples' transfer. Now it stands for fetching data from the local-bucket whenever the bucket-iterator is called for writing data. In the end, the result at each node is represented by one sorted file with RDF triples (only if we let the default number, equal with 1, of buckets per node). 
+After all the triples got moved from the remote-buckets (previous step is finished), the final step is all about merging the local-bucket's in-memory buffer with its cached content (the files from the hard disk) -- in case data hits the disk. This task is done by the same method (RemoveChunk) that removes chunks for triples' transfer. Now it stands for fetching data from the local-bucket whenever the bucket-iterator is called for writing data. In the end, the result at each node is represented by one sorted file with RDF triples (only if we let the default number, equal with 1, of buckets per node). This step is represented by Figure~\ref{fig:diag3}.
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag3}
 \caption{Merge and write}
+\label{fig:diag3}
 \end{figure}
 
 \pagebreak
@@ -67,8 +70,35 @@ After all the triples got moved from the remote-buckets (previous step is finish
 % 
 \subsection{Execution-time \& profiling}
 
-<Table-1>
-<Chart-1>
+Testing configuration: 
+\begin{itemize}
+	\item \textbf{Cluster-Node}: 1 Node @ DAS4, 16 x QuadCore Intel Xeon CPU E5620 @ 2.4GHz 
+	\item \textbf{Nodes}: 8, 12, 16
+	\item \textbf{Dataset sizes}: 21, 38, 62, 149 GB
+	\item \textbf{Split sizes}: 256MB, 1GB, 2GB, 4GB
+	\item \textbf{Common setups}: 512MB buffer size, available to transmit on 128MB (1/4 of buffer size), 8 concurrent tuple senders
+\end{itemize}
+
+Test - 8 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th.tex}
+}
+
+Test - 12 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th.tex}
+}
+
+Test - 16 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th.tex}
+}
 
 % 
 \subsubsection*{Discussion}
@@ -76,14 +106,14 @@ After all the triples got moved from the remote-buckets (previous step is finish
 % 
 \subsection{Proposals \& implementations: how to improve \textit{arch's} \\ execution-time}
 
-In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch benchm\_master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would for reading-sorting-caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the pre-research I made on Hadoop:Map-Reduce \cite{hadoop}, a platform for processing data which has a stage called 'shuffle' \cite{shuffling} that ensures data is partitioned and sent to the reducers, I came up with the following ideas: 
+In generally, a distributed large scale data application is considered optimal if each data-item (in our case \textit{1 single RDF triple}) is processed (i.e \textit{distributed sorting}) using less than (inclusive) 2 writes on disk. Not so many applications apply this rule - including the Arch framework (branch benchm\_master). In worst case, if we are dealing with a big amount of data (a file partition split size bigger than the amount of memory - buffer size - available on each node), the total number of disk writes sums up to 3 (1 write would be for reading/sorting/caching data on the disk + 1 on the recipient side for gathering data in the local-bucket and + 1 for writing the final results). Given the previous research I made on Hadoop's Map-Reduce \cite{hadoop}, a platform for processing data which has a layer for data shuffling \cite{shuffling} that partitions data to the reducers, I came up with the following ideas: 
 \begin{itemize}
 \item to \textit{disable the local sorting of remote-buckets},
-\item to \textit{start as soon as possible the triples' transfer/send-receive} (we do not need to keep data more than is necessary => until the end of a partition read) and
-\item to \textit{'hide' the triples' merging} under a independent background process. 
+\item to \textit{start as soon as possible the triples' transfer/send-receive} (we do not need to keep data more than is necessary) and
+\item to \textit{use an in-background double buffering mechanism to provide final merged chunks for the bucket-iterator}. 
 \end{itemize}
   
-These proposals intent to increase the chances of using less then 3 writes on disk (unless the network represents a bottleneck) and to improve the execution time of the Arch framework. From the distributed-sorting point of view, in my opinion, this approach of moving the sort phase on the recipient side and having less writes on disks is able to improve the total time of the execution. In the next paragraphs I will detail each of them, writing also about the implementation aspects.
+These proposals intent to increase the chances of using less then 3 writes on disk (unless the network represents a bottleneck) and to improve the execution time of the Arch framework. From the distributed-sorting point of view, in my opinion, this approach of moving the sort phase on the recipient side and having less writes on disks is able to improve the total time of the execution. In the next paragraphs I will detail each of them and also provide some implementation aspects.
 
 % 
 \subsubsection*{(1) Disabling sort property for remote-buckets}
@@ -107,6 +137,10 @@ Furthermore, we can improve the previous part by splitting the main buffer into 
 
 Now, that we split the buffer into two independent buffers we can further loosen-up the synchronization primitives between the read and transfer (\textit{add() and addAll() methods}), the only coarse synchronization point being the moment when both methods call \textit{cacheBuffer()} (both buffers might get full maybe at the same time).
 
+Steps 1 and 2 are described in Figure~\ref{fig:diag4}.
+
+\pagebreak
+
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag4a}
@@ -115,29 +149,58 @@ Now, that we split the buffer into two independent buffers we can further loosen
 \centering
 \includegraphics[scale=0.6]{diag4b}
 \caption{New local/remote buckets}
+\label{fig:diag4}
 \end{figure}
 
 % 
-\subsubsection*{(3) In-background chunks' removal for writing the results in files}
+\subsubsection*{(3) Double-buffering for writing the results in files}
 
-The last idea refers to the writing of the sorted local-bucket (all the triples) into the result file -- the result set. The way of doing that is to use the \textit{removeChunk()} method into the \textit{bucketIterator} class to fetch chunks from the local-bucket when there are no more triples to iterate on. An idea would be to hide the dead-time that the iterator has to wait for merging-up triples from the main memory (buffer) with the ones stored on the disk and to try instead to remove/get a chunk that has been already processed and stored in a set of auxiliary buffers in memory (triples ready to be written as results). For that, we start a separate thread at the right moment we set the bucket's flag on finished, which fills up auxiliary buffers with chunks from the main buffer. When a write is being performed (iterator is called), the chunk is taken directly from the auxiliary buffers instead of waiting for the whole merge. Moreover, when a buffer from the set gets emptied the thread will go on and try to refill it, if there are anymore elements for that -- this mechanism of storing buffers processed earlier is generally called 'Double-Buffering'.
+The last idea refers to writing down the sorted local-bucket (all the triples) into the final result file. This phase uses a \textit{bucketIterator} to iterate over the results. As in turn the iterator uses multiple \textit{removeChunk()} method calls to fetch chunks from the local-bucket, when there are no more triples to iterate/write down. An idea would be to hide the time that the iterator has to wait for merging-up triples from the main memory (buffer) with the ones stored on the disk. Instead we can try to remove/get a chunk that has been already processed and stored in a set of auxiliary buffers in memory (triples ready to be 'served' to the iterator). To implement that, we start a separate thread at the right moment we set the bucket's flag on finished to fill up auxiliary buffers with chunks from the main buffer. When a write is being performed the iterator is called and the chunk is taken directly from the auxiliary buffers instead of waiting for the whole merging. Moreover, when a buffer from the set gets emptied the thread will go on and try to refill it, if there are anymore triples for doing that -- this mechanism of storing buffers processed earlier is generally called 'Double-Buffering'. Figure~\ref{fig:diag5} shows how this mechanism was implemented for the \textit{removeChunk()}. 
 
 \begin{figure}
 \centering
 \includegraphics[scale=0.6]{diag5}
 \caption{In-background merge-up}
+\label{fig:diag5}
 \end{figure}
 
 % 
 \subsubsection{Results: execution-time \& profiling}
 
-<Table-2>
-<Chart-2>
+Test - 8 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th_r.tex}
+}
+
+Test - 12 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th_r.tex}
+}
+
+Test - 16 threads
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/8th_r.tex}
+}
 
 % 
 \subsubsection*{Discussion}
 
 \subsection{Future work}
+
+For future work I propose the following developments:
+
+\begin{itemize}
+	\item Moving to processes. One idea is to implement an option/feature that allows specifying how many 'instances' of PartitionToNodes to run locally and how many remotely on other nodes (following the Apache design model, i.e multiple mappers on same node). Example: if 1 node has 4 x QuadCore CPUs --- in total we can run 8 instances at least (maximum 16), 2 local instances on every node (given the fact that one instance makes highly use of multi-threading is fair enough to start only 2 processes per node).
+	\item Thread synchronization. In Arch/Ajira framework we use threads for background processing and all the methods tend to be globally synchronized for avoiding race conditions on the data structures. This adds a significant overhead to the application, because the access to the data structures becomes coarse grained. A solution for that is to use fine-grained/free-locks data structures or a similar mechanism with double buffering. 
+	\item Fine-grained file splitting. For the current Ajira/Arch version we coarsely split the data set between nodes. That means we consider an entire file when we decide where to send it (in what split collection), for further computation, instead of splitting the file in multiple pieces (i.e 64MB) and take their sizes into consideration. For small size files (with an order of maximum tens of MB) the coarse grained level works fine, but if the dataset has bigger files in small numbers we can get into an unbalanced situation.
+	\item Data sampler. In the current state of Arch/Ajira, the output of a distributed sorting application is not globally ordered. It means that we still have to merge each result file in order to get a full sorted data set from the start to its end. Instead of that, a well known method to achieve global ordering and also a fair data balancing is to perform a previous step called \textit{sampling}. As a state-of-the-art idea is to rely on a Trie (a prefix tree) based algorithm with a depth level fixed in such a way that will assure you enough granularity to equally balance the key partitions to all your nodes. After you have computed the tree you will use that as a tuple partitioner instead of a hash algorithm in your normal data computation. An example of a Trie based sampling algorithm applied with Hadoop Map-Reduce can be seen at [].
+\end{itemize}
 
 \subsection{Conclusions}
 % CHAPTER_END
