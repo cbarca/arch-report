@@ -1,0 +1,45 @@
+\begin{tabularx}{\linewidth}{c|c|c|c|c|c|c|c|c|c|l|}
+\cline{2-10}
+& SplitSz 
+& \multicolumn{3}{c|}{256MB} & \multicolumn{3}{c|}{1GB}  & \multicolumn{1}{c|}{2GB} & \multicolumn{1}{c|}{4GB} \\
+\cline{2-10}
+& DataSz 
+& 21 & 38 & 62 & 21 & 38 & 62 & 62 & 149 \\
+\cline{2-10}
+& 1
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 2
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 3
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 4
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 5
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 6
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 7
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 8
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 9
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& 10
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& Avg (mm.ss)
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+& Improv. \%
+&  &  &  &  &  &  &  &  \\
+\cline{2-10}
+\end{tabularx}

@@ -68,40 +68,37 @@ After all the triples got moved from the remote-buckets (previous step is finish
 \pagebreak
 
 % 
-\subsection{Execution-time \& profiling}
+\subsection{Execution-time}
 
 Testing configuration: 
 \begin{itemize}
 	\item \textbf{Cluster-Node}: 1 Node @ DAS4, 16 x QuadCore Intel Xeon CPU E5620 @ 2.4GHz 
-	\item \textbf{Nodes}: 8, 12, 16
+	\item \textbf{Number of Nodes}: 8, 12, 16
 	\item \textbf{Dataset sizes}: 21, 38, 62, 149 GB
 	\item \textbf{Split sizes}: 256MB, 1GB, 2GB, 4GB
 	\item \textbf{Common setups}: 512MB buffer size, available to transmit on 128MB (1/4 of buffer size), 8 concurrent tuple senders
 \end{itemize}
 
-Test - 8 threads
+Test - 8 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th.tex}
+\input{results/8n.tex}
 }
 
-Test - 12 threads
+Test - 12 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th.tex}
+\input{results/12n.tex}
 }
 
-Test - 16 threads
+Test - 16 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th.tex}
+\input{results/16n.tex}
 }
-
-% 
-\subsubsection*{Discussion}
 
 % 
 \subsection{Proposals \& implementations: how to improve \textit{ajira's} \\ execution-time}
@@ -164,28 +161,46 @@ The last idea refers to writing down the sorted local-bucket (all the triples) i
 \end{figure}
 
 % 
-\subsubsection{Results: execution-time \& profiling}
+\subsubsection{Results: execution-time}
 
-Test - 8 threads
+Test - 8 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th_r.tex}
+\input{results/8n_r.tex}
 }
 
-Test - 12 threads
+\newpage
+
+Test - 12 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th_r.tex}
+\input{results/12n_r.tex}
 }
 
-Test - 16 threads
+Test - 16 nodes
 \newline \newline
 \renewcommand{\arraystretch}{1.2}
 {\footnotesize\tt
-\input{results/8th_r.tex}
+\input{results/16n_r.tex}
 }
+
+\newpage
+
+Speedup test: average on the best 10 execution-times (mm.ss), see Figure~\ref{fig:speedup}
+\newline \newline
+\renewcommand{\arraystretch}{1.2}
+{\footnotesize\tt
+\input{results/speedup.tex}
+}
+
+\begin{figure}
+\centering
+\includegraphics[scale=0.6]{speedup}
+\caption{Speedup-chart for Ajira[blue] \& Ajira-Research[red]}
+\label{fig:speedup}
+\end{figure}
 
 % 
 \subsubsection*{Discussion}
